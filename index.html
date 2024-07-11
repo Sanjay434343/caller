@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Call</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f7f7f7;
+            margin: 0;
+            padding: 0;
+        }
+        
+        #auth, #callInterface {
+            margin: 50px auto;
+            max-width: 400px;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        video {
+            width: 45%;
+            margin: 10px;
+            border: 1px solid black;
+        }
+        
+        #authMessage {
+            color: red;
+            font-size: 14px;
+        }
+        
+    </style>
+</head>
+<body>
+    <div id="auth">
+        <h2>Login</h2>
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+        <button id="login">Login</button>
+        <button id="register">Register</button>
+        <div id="authMessage"></div>
+    </div>
+
+    <div id="callInterface" style="display: none;">
+        <h1>WebRTC Call</h1>
+        <video id="localVideo" autoplay playsinline></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+        <br>
+        <button id="startCall">Start Call</button>
+        <button id="answerCall">Answer Call</button>
+        <button id="logout">Logout</button>
+    </div>
+
+    <!-- Include Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCNysGPKExtGohowyAfSfO_A6fHqwtmZGY",
+            authDomain: "vijaychitansfund.firebaseapp.com",
+            databaseURL: "https://vijaychitansfund-default-rtdb.firebaseio.com",
+            projectId: "vijaychitansfund",
+            storageBucket: "vijaychitansfund.appspot.com",
+            messagingSenderId: "252546428279",
+            appId: "1:252546428279:android:f224c272a9fada5f724572"
+     
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        const authDiv = document.getElementById('auth');
+        const callInterfaceDiv = document.getElementById('callInterface');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const loginButton = document.getElementById('login');
+        const registerButton = document.getElementById('register');
+        const authMessage = document.getElementById('authMessage');
+        const logoutButton = document.getElementById('logout');
+
+        let localStream;
+        let remoteStream;
+        let peerConnection;
+
+        const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const startCallButton = document.getElementById('startCall');
+        const answerCallButton = document.getElementById('answerCall');
+
+        loginButton.onclick = async () => {
+            try {
+                const userCredential = await auth.signInWithEmailAndPassword(emailInput.value, passwordInput.value);
+                showCallInterface();
+            } catch (error) {
+                if (error.code === 'auth/invalid-email') {
+                    authMessage.textContent = 'Invalid email format. Please enter a valid email address.';
+                } else {
+                    authMessage.textContent = error.message;
+                }
+            }
+        };
+
+        registerButton.onclick = async () => {
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(emailInput.value, passwordInput.value);
+                showCallInterface();
+            } catch (error) {
+                if (error.code === 'auth/invalid-email') {
+                    authMessage.textContent = 'Invalid email format. Please enter a valid email address.';
+                } else {
+                    authMessage.textContent = error.message;
+                }
+            }
+        };
+
+        logoutButton.onclick = async () => {
+            await auth.signOut();
+            showAuthInterface();
+        };
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                showCallInterface();
+            } else {
+                showAuthInterface();
+            }
+        });
+
+        function showAuthInterface() {
+            authDiv.style.display = 'block';
+            callInterfaceDiv.style.display = 'none';
+        }
+
+        function showCallInterface() {
+            authDiv.style.display = 'none';
+            callInterfaceDiv.style.display = 'block';
+        }
+
+        startCallButton.onclick = async () => {
+            startCallButton.disabled = true;
+            answerCallButton.disabled = false;
+
+            const callDoc = db.collection('calls').doc();
+            const offerCandidates = callDoc.collection('offerCandidates');
+            const answerCandidates = callDoc.collection('answerCandidates');
+
+            peerConnection = new RTCPeerConnection(configuration);
+            registerPeerConnectionListeners();
+
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
+            const offerDescription = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offerDescription);
+
+            const offer = {
+                sdp: offerDescription.sdp,
+                type: offerDescription.type,
+            };
+
+            await callDoc.set({ offer, callerId: auth.currentUser.email });
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    offerCandidates.add(event.candidate.toJSON());
+                }
+            };
+
+            callDoc.onSnapshot((snapshot) => {
+                const data = snapshot.data();
+                if (!peerConnection.currentRemoteDescription && data && data.answer) {
+                    const answerDescription = new RTCSessionDescription(data.answer);
+                    peerConnection.setRemoteDescription(answerDescription);
+                }
+            });
+
+            answerCandidates.onSnapshot((snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added') {
+                        const candidate = new RTCIceCandidate(change.doc.data());
+                        peerConnection.addIceCandidate(candidate);
+                    }
+                });
+            });
+        };
+
+        answerCallButton.onclick = async () => {
+            answerCallButton.disabled = true;
+
+            const callId = prompt('Enter call ID');
+            const callDoc = db.collection('calls').doc(callId);
+            const offerCandidates = callDoc.collection('offerCandidates');
+            const answerCandidates = callDoc.collection('answerCandidates');
+
+            peerConnection = new RTCPeerConnection(configuration);
+            registerPeerConnectionListeners();
+
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
+            const callData = (await callDoc.get()).data();
+
+            const offerDescription = callData.offer;
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offerDescription));
+
+            const answerDescription = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answerDescription);
+
+            const answer = {
+                sdp: answerDescription.sdp,
+                type: answerDescription.type,
+            };
+
+            await callDoc.update({ answer });
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    answerCandidates.add(event.candidate.toJSON());
+                }
+            };
+
+            offerCandidates.onSnapshot((snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added') {
+                        const candidate = new RTCIceCandidate(change.doc.data());
+                        peerConnection.addIceCandidate(candidate);
+                    }
+                });
+            });
+        };
+
+        async function getMedia() {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            remoteStream = new MediaStream();
+
+            localVideo.srcObject = localStream;
+            remoteVideo.srcObject = remoteStream;
+        }
+
+        function registerPeerConnectionListeners() {
+            peerConnection.addEventListener('track', event => {
+                event.streams[0].getTracks().forEach(track => {
+                    remoteStream.addTrack(track);
+                });
+            });
+        }
+
+        getMedia();
+    </script>
+</body>
+</html>

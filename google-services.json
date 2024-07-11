@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "252546428279",
+    "firebase_url": "https://vijaychitansfund-default-rtdb.firebaseio.com",
+    "project_id": "vijaychitansfund",
+    "storage_bucket": "vijaychitansfund.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:252546428279:android:f224c272a9fada5f724572",
+        "android_client_info": {
+          "package_name": "com.app.vijaychitansfund"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNysGPKExtGohowyAfSfO_A6fHqwtmZGY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
